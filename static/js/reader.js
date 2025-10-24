@@ -1,203 +1,155 @@
-        document.addEventListener('DOMContentLoaded', function() {
-            // Elements
-            const fileInput = document.getElementById('pdfFile');
-            const browseBtn = document.getElementById('browseBtn');
-            const dropZone = document.getElementById('dropZone');
-            const fileInfo = document.getElementById('fileInfo');
-            const fileName = document.getElementById('fileName');
-            const fileSize = document.getElementById('fileSize');
-            const removeFile = document.getElementById('removeFile');
-            const readBtn = document.getElementById('readBtn');
-            const stopBtn = document.getElementById('stopBtn');
-            const startPage = document.getElementById('startPage');
-            const endPage = document.getElementById('endPage');
-            const readingSpeed = document.getElementById('readingSpeed');
-            const voiceType = document.getElementById('voiceType');
-            const loading = document.getElementById('loading');
-            const progressBar = document.getElementById('progressBar');
-            const progressPercent = document.getElementById('progressPercent');
-            const successMessage = document.getElementById('successMessage');
-            const errorMessage = document.getElementById('errorMessage');
-            const successText = document.getElementById('successText');
-            const errorText = document.getElementById('errorText');
+        // DOM Elements
+        const pdfForm = document.getElementById('pdfForm');
+        const fileInput = document.getElementById('fileInput');
+        const dropArea = document.getElementById('dropArea');
+        const fileInfo = document.getElementById('fileInfo');
+        const fileName = document.getElementById('fileName');
+        const fileSize = document.getElementById('fileSize');
+        const removeFile = document.getElementById('removeFile');
+        const submitBtn = document.getElementById('submitBtn');
+        const uploadSection = document.getElementById('uploadSection');
+        const loadingSection = document.getElementById('loadingSection');
+        const audioSection = document.getElementById('audioSection');
+        const audioPlayer = document.getElementById('audioPlayer');
+        const errorSection = document.getElementById('errorSection');
+        const errorMessage = document.getElementById('errorMessage');
+        const stopBtn = document.getElementById('stopBtn');
 
-            // File handling
-            browseBtn.addEventListener('click', () => fileInput.click());
-            
-            fileInput.addEventListener('change', function() {
-                if (this.files && this.files[0]) {
-                    handleFileSelection(this.files[0]);
-                }
-            });
+        // File handling
+        fileInput.addEventListener('change', handleFileSelect);
+        removeFile.addEventListener('click', clearFileSelection);
 
-            // Drag and drop functionality
-            ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
-                dropZone.addEventListener(eventName, preventDefaults, false);
-            });
+        // Drag and drop functionality
+        ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+            dropArea.addEventListener(eventName, preventDefaults, false);
+        });
 
-            function preventDefaults(e) {
-                e.preventDefault();
-                e.stopPropagation();
-            }
+        function preventDefaults(e) {
+            e.preventDefault();
+            e.stopPropagation();
+        }
 
-            ['dragenter', 'dragover'].forEach(eventName => {
-                dropZone.addEventListener(eventName, () => {
-                    dropZone.classList.add('file-drag-over');
-                }, false);
-            });
+        ['dragenter', 'dragover'].forEach(eventName => {
+            dropArea.addEventListener(eventName, highlight, false);
+        });
 
-            ['dragleave', 'drop'].forEach(eventName => {
-                dropZone.addEventListener(eventName, () => {
-                    dropZone.classList.remove('file-drag-over');
-                }, false);
-            });
+        ['dragleave', 'drop'].forEach(eventName => {
+            dropArea.addEventListener(eventName, unhighlight, false);
+        });
 
-            dropZone.addEventListener('drop', (e) => {
-                const dt = e.dataTransfer;
-                const files = dt.files;
-                if (files.length > 0 && files[0].type === 'application/pdf') {
-                    handleFileSelection(files[0]);
-                } else {
-                    showError('Please drop a valid PDF file.');
-                }
-            }, false);
+        function highlight() {
+            dropArea.classList.add('file-drag-over');
+        }
 
-            function handleFileSelection(file) {
-                if (file.type !== 'application/pdf') {
-                    showError('Please select a valid PDF file.');
-                    return;
-                }
+        function unhighlight() {
+            dropArea.classList.remove('file-drag-over');
+        }
 
-                // Update file info
+        dropArea.addEventListener('drop', handleDrop, false);
+
+        function handleDrop(e) {
+            const dt = e.dataTransfer;
+            const files = dt.files;
+            fileInput.files = files;
+            handleFileSelect();
+        }
+
+        function handleFileSelect() {
+            if (fileInput.files.length > 0) {
+                const file = fileInput.files[0];
                 fileName.textContent = file.name;
                 fileSize.textContent = formatFileSize(file.size);
                 fileInfo.classList.remove('hidden');
-                
-                // Enable read button
-                readBtn.disabled = false;
-                
-                hideMessages();
+                submitBtn.disabled = false;
             }
+        }
 
-            function formatFileSize(bytes) {
-                if (bytes === 0) return '0 Bytes';
-                const k = 1024;
-                const sizes = ['Bytes', 'KB', 'MB', 'GB'];
-                const i = Math.floor(Math.log(bytes) / Math.log(k));
-                return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
-            }
+        function clearFileSelection() {
+            fileInput.value = '';
+            fileInfo.classList.add('hidden');
+            submitBtn.disabled = true;
+        }
 
-            removeFile.addEventListener('click', () => {
-                fileInput.value = '';
-                fileInfo.classList.add('hidden');
-                readBtn.disabled = true;
-            });
+        function formatFileSize(bytes) {
+            if (bytes === 0) return '0 Bytes';
+            const k = 1024;
+            const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+        }
 
-            // Read PDF functionality
-            readBtn.addEventListener('click', function() {
-                if (!fileInput.files[0]) {
-                    showError('Please select a PDF file first.');
-                    return;
+        // Form submission
+        pdfForm.addEventListener('submit', async function(e) {
+            e.preventDefault();
+            
+            // Show loading state
+            uploadSection.classList.add('hidden');
+            loadingSection.classList.remove('hidden');
+            audioSection.classList.add('hidden');
+            errorSection.classList.add('hidden');
+            
+            const formData = new FormData(this);
+
+            try {
+                const response = await fetch('/read-pdf/', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const data = await response.json();
+                
+                // Hide loading state
+                loadingSection.classList.add('hidden');
+                
+                if (data.success) {
+                    audioPlayer.src = data.audio_url;
+                    audioSection.classList.remove('hidden');
+                    audioPlayer.play();
+                } else {
+                    errorMessage.textContent = data.error || 'An unknown error occurred';
+                    errorSection.classList.remove('hidden');
+                    uploadSection.classList.remove('hidden');
                 }
-
-                const formData = new FormData();
-                formData.append('pdf_file', fileInput.files[0]);
-                formData.append('start_page', startPage.value);
-                formData.append('end_page', endPage.value);
-                formData.append('reading_speed', readingSpeed.value);
-                formData.append('voice_type', voiceType.value);
-
-                showLoading();
-                hideMessages();
-
-                // Simulate progress for demo purposes
-                let progress = 0;
-                const progressInterval = setInterval(() => {
-                    progress += Math.random() * 10;
-                    if (progress > 90) {
-                        clearInterval(progressInterval);
-                    }
-                    updateProgress(progress);
-                }, 200);
-
-                fetch('/read-pdf/', {
-                    method: 'POST',
-                    body: formData,
-                    headers: {
-                        'X-Requested-With': 'XMLHttpRequest',
-                    }
-                })
-                .then(response => response.json())
-                .then(data => {
-                    clearInterval(progressInterval);
-                    updateProgress(100);
-                    
-                    setTimeout(() => {
-                        hideLoading();
-                        if (data.success) {
-                            showSuccess(data.message || 'Reading started successfully!');
-                        } else {
-                            showError(data.error || 'An error occurred while reading the PDF.');
-                        }
-                    }, 500);
-                })
-                .catch(error => {
-                    clearInterval(progressInterval);
-                    hideLoading();
-                    showError('Network error: ' + error.message);
-                });
-            });
-
-            // Stop reading functionality
-            stopBtn.addEventListener('click', function() {
-                // In a real implementation, this would stop the TTS engine
-                fetch('/stop-reading/', {
-                    method: 'POST',
-                    headers: {
-                        'X-Requested-With': 'XMLHttpRequest',
-                    }
-                })
-                .then(() => {
-                    window.location.reload();
-                    showSuccess('Reading stopped.');
-                })
-                .catch(error => {
-                    showError('Error stopping reading: ' + error.message);
-                });
-            });
-
-            // Progress functions
-            function updateProgress(percent) {
-                progressBar.style.width = `${percent}%`;
-                progressPercent.textContent = `${Math.round(percent)}%`;
-            }
-
-            function showLoading() {
-                loading.classList.remove('hidden');
-                readBtn.disabled = true;
-                updateProgress(0);
-            }
-
-            function hideLoading() {
-                loading.classList.add('hidden');
-                readBtn.disabled = false;
-            }
-
-            // Message functions
-            function showSuccess(message) {
-                successText.textContent = message;
-                successMessage.classList.remove('hidden');
-                errorMessage.classList.add('hidden');
-            }
-
-            function showError(message) {
-                errorText.textContent = message;
-                errorMessage.classList.remove('hidden');
-                successMessage.classList.add('hidden');
-            }
-
-            function hideMessages() {
-                successMessage.classList.add('hidden');
-                errorMessage.classList.add('hidden');
+            } catch (error) {
+                // Hide loading state
+                loadingSection.classList.add('hidden');
+                
+                errorMessage.textContent = 'Network error: ' + error.message;
+                errorSection.classList.remove('hidden');
+                uploadSection.classList.remove('hidden');
             }
         });
+
+        // Stop button functionality
+        stopBtn.addEventListener('click', function() {
+            audioPlayer.pause();
+            audioPlayer.currentTime = 0;
+            
+            // Send stop request to server
+            fetch('/stop-reading/', {
+                method: 'POST',
+                headers: {
+                    'X-CSRFToken': getCookie('csrftoken'),
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({})
+            }).catch(error => {
+                console.error('Error stopping audio:', error);
+            });
+        });
+
+        // Helper function to get CSRF token
+        function getCookie(name) {
+            let cookieValue = null;
+            if (document.cookie && document.cookie !== '') {
+                const cookies = document.cookie.split(';');
+                for (let i = 0; i < cookies.length; i++) {
+                    const cookie = cookies[i].trim();
+                    if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                        cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                        break;
+                    }
+                }
+            }
+            return cookieValue;
+        }

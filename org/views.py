@@ -1,29 +1,11 @@
 import os
-import pyttsx3
 import fitz
 from django.shortcuts import render
 from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 from django.core.files.storage import FileSystemStorage
-import threading
-
-
-import pyttsx3
-
-tts_engine = pyttsx3.init()
-
-# def read_pdf(request):
-#     # extract text, etc.
-#     tts_engine.say("some text")
-#     tts_engine.runAndWait()
-#     return JsonResponse({'success': True})
-
-# def stop_reading(request):
-#     if request.method == 'POST':
-#         tts_engine.stop()
-#         return JsonResponse({'success': True, 'message': 'Reading stopped.'})
-
-
+from gtts import gTTS
+import tempfile
 
 def index(request):
     return render(request, 'org/reader.html')
@@ -32,84 +14,56 @@ def index(request):
 def read_pdf(request):
     if request.method == 'POST' and request.FILES.get('pdf_file'):
         try:
-            # Get the uploaded file
             pdf_file = request.FILES['pdf_file']
             start_page = request.POST.get('start_page', '').strip()
             end_page = request.POST.get('end_page', '').strip()
-            
-            # Save the uploaded file temporarily
+            language = request.POST.get('language', 'en')
+
             fs = FileSystemStorage()
             filename = fs.save(pdf_file.name, pdf_file)
             file_path = fs.path(filename)
-            
-            # Extract text from PDF
+
             doc = fitz.open(file_path)
             text = ""
-            
-            if not start_page and not end_page:
-                # Read all pages
-                for page in doc:
-                    text += page.get_text()
-            elif not start_page:
-                # Read from beginning to end_page
-                end = int(end_page)
-                for i in range(min(end, len(doc))):
-                    page = doc.load_page(i)
-                    text += page.get_text()
-            elif not end_page:
-                # Read from start_page to end
-                start = int(start_page) - 1
-                for i in range(max(start, 0), len(doc)):
-                    page = doc.load_page(i)
-                    text += page.get_text()
-            else:
-                # Read specific range
-                start = int(start_page) - 1
-                end = int(end_page)
-                for i in range(max(start, 0), min(end, len(doc))):
-                    page = doc.load_page(i)
-                    text += page.get_text()
-            
+            total_pages = len(doc)
+            start = int(start_page) - 1 if start_page else 0
+            end = int(end_page) if end_page else total_pages
+
+            for i in range(max(start, 0), min(end, total_pages)):
+                text += doc.load_page(i).get_text()
+
             doc.close()
-            
-            # Clean up the temporary file
             fs.delete(filename)
-            
-            # Start text-to-speech in a separate thread
-            def speak_text(text_content):
-                try:
-                    engine = pyttsx3.init()
-                    engine.say(text_content)
-                    engine.runAndWait()
-                except Exception as e:
-                    print(f"TTS Error: {e}")
-            
-            # Start TTS in background thread
-            tts_thread = threading.Thread(target=speak_text, args=(text,))
-            tts_thread.daemon = True
-            tts_thread.start()
-            
-            return JsonResponse({
-                'success': True,
-                'message': 'Reading started successfully!',
-                'text_length': len(text)
-            })
-            
+
+            text = clean_text_for_tts(text)
+            if not text.strip():
+                return JsonResponse({'success': False, 'error': 'No readable text found'})
+
+            # Generate audio and store it temporarily
+            tts = gTTS(text=text, lang=language)
+            tmp_file = tempfile.NamedTemporaryFile(delete=False, suffix='.mp3')
+            tts.save(tmp_file.name)
+            audio_filename = os.path.basename(tmp_file.name)
+            audio_url = f"/media/{audio_filename}"
+
+            # Move file to media folder
+            media_path = os.path.join('media', audio_filename)
+            os.rename(tmp_file.name, media_path)
+
+            return JsonResponse({'success': True, 'audio_url': audio_url})
+
         except Exception as e:
-            return JsonResponse({
-                'success': False,
-                'error': str(e)
-            })
-    
-    return JsonResponse({
-        'success': False,
-        'error': 'No file uploaded'
-    })
+            return JsonResponse({'success': False, 'error': str(e)})
+
+    return JsonResponse({'success': False, 'error': 'No file uploaded'})
+
+def clean_text_for_tts(text, max_chars=5000):
+    text = ' '.join(text.split())
+    return text[:max_chars] + "... [text truncated]" if len(text) > max_chars else text
 
 
-@csrf_exempt
 def stop_reading(request):
     if request.method == 'POST':
-        tts_engine.stop()
-        return JsonResponse({'success': True, 'message': 'Reading stopped.'})
+        # Implement logic to stop reading the PDF
+        return JsonResponse({'success': True})
     return JsonResponse({'success': False, 'error': 'Invalid request method'}, status=400)
