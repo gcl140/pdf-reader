@@ -38,7 +38,8 @@ pip install -r requirements.txt
 ### Usage
 
 ```bash
-python main.py
+python manage.py migrate
+python manage.py runserver
 ```
 
 ## 🛠️ Development
@@ -64,7 +65,7 @@ pdf-reader/
 ├── LICENSE           # MIT License
 ├── README.md         # This file
 ├── .gitignore       # Git ignore rules
-└── ...              # Source files (to be added)
+└── ...              # Source files
 ```
 
 ## 🤝 Contributing
